@@ -1,0 +1,249 @@
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
+import QtQuick.Dialogs
+import Qt.labs.platform 1.1  // might be deprecated?
+
+ApplicationWindow {
+    id: mainWindow
+    visible: true
+    width: 1200
+    height: 800
+    title: qsTr("Art Gallery Manager - Experimental")
+    color: "#1a1a1a"  // trying dark theme
+    
+    property bool galleryLoaded: false
+    property var selectedImages: []  // for comic layout feature
+    
+    // Menu bar - not working properly yet
+    menuBar: MenuBar {
+        Menu {
+            title: "File"
+            MenuItem {
+                text: "Load Gallery..."
+                onTriggered: folderDialog.open()
+            }
+            MenuItem {
+                text: "Clear"
+                onTriggered: galleryModel.clearGallery()
+            }
+            MenuItem {
+                text: "Exit"
+                onTriggered: Qt.quit()  // doesn't always work
+            }
+        }
+        Menu {
+            title: "Tools"
+            MenuItem {
+                text: "Generate Comic Layout"
+                enabled: selectedImages.length > 1
+                onTriggered: comicDialog.open()
+            }
+            MenuItem {
+                text: "Photoshop Bot"
+                onTriggered: {
+                    console.log("Not implemented yet")
+                    errorPopup.show("Photoshop bot coming soon!")
+                }
+            }
+        }
+    }
+    
+    // Main layout
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 10
+        
+        // Toolbar
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 50
+            color: "#2a2a2a"
+            radius: 5
+            
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+                
+                Button {
+                    text: "Load Folder"
+                    onClicked: folderDialog.open()
+                }
+                
+                Button {
+                    text: "Refresh"
+                    enabled: galleryLoaded
+                    onClicked: galleryModel.refreshGallery()
+                }
+                
+                ComboBox {
+                    model: ["No Sort", "By Name", "By Date", "By Size"]
+                    onCurrentIndexChanged: {
+                        // TODO: implement all sorting methods
+                        if (currentIndex == 1) {
+                            galleryModel.sortByName()  // might crash
+                        }
+                    }
+                }
+                
+                Label {
+                    text: "Images: " + galleryModel.imageCount
+                    color: "white"
+                }
+                
+                Item { Layout.fillWidth: true }  // spacer
+                
+                TextField {
+                    placeholderText: "Search..."
+                    // search not implemented
+                }
+            }
+        }
+        
+        // Gallery Grid View
+        ScrollView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            
+            GridView {
+                id: galleryGrid
+                model: galleryModel
+                cellWidth: 220
+                cellHeight: 250
+                clip: true
+                
+                delegate: Item {
+                    width: galleryGrid.cellWidth - 10
+                    height: galleryGrid.cellHeight - 10
+                    
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 5
+                        color: "#3a3a3a"
+                        radius: 8
+                        border.color: isSelected ? "#00ff00" : "transparent"
+                        border.width: 2
+                        
+                        property bool isSelected: selectedImages.indexOf(model.path) !== -1
+                        
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 5
+                            
+                            // Image preview
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                color: "#4a4a4a"
+                                
+                                Image {
+                                    anchors.fill: parent
+                                    source: "file:///" + model.path  // might not work on Linux
+                                    fillMode: Image.PreserveAspectFit
+                                    // TODO: add loading indicator
+                                    onStatusChanged: {
+                                        if (status == Image.Error) {
+                                            console.log("Failed to load: " + model.path)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Image name
+                            Label {
+                                Layout.fillWidth: true
+                                text: model.name || "Unknown"
+                                color: "white"
+                                elide: Text.ElideRight
+                                font.pointSize: 9
+                            }
+                        }
+                        
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                // Toggle selection - buggy
+                                var index = selectedImages.indexOf(model.path)
+                                if (index === -1) {
+                                    selectedImages.push(model.path)
+                                } else {
+                                    selectedImages.splice(index, 1)
+                                }
+                                parent.isSelected = !parent.isSelected
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Folder selection dialog
+    FolderDialog {
+        id: folderDialog
+        title: "Select Gallery Folder"
+        onAccepted: {
+            galleryModel.loadGallery(folder.toString())
+            galleryLoaded = true
+        }
+    }
+    
+    // Comic layout dialog - experimental
+    Dialog {
+        id: comicDialog
+        title: "Generate Comic Layout"
+        modal: true
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        
+        ColumnLayout {
+            ComboBox {
+                model: ["2x2 Grid", "3x2 Grid", "Custom"]
+                // only 2x2 works sometimes
+            }
+            
+            CheckBox {
+                text: "Add speech bubbles"
+                // not implemented
+            }
+            
+            CheckBox {
+                text: "Auto-arrange"
+                checked: true
+            }
+        }
+        
+        onAccepted: {
+            console.log("Generating layout for " + selectedImages.length + " images")
+            // TODO: actually generate layout
+        }
+    }
+    
+    // Error popup - trying to make reusable
+    Popup {
+        id: errorPopup
+        anchors.centerIn: parent
+        width: 300
+        height: 100
+        modal: true
+        
+        property string message: ""
+        
+        function show(msg) {
+            message = msg
+            open()
+        }
+        
+        Label {
+            anchors.centerIn: parent
+            text: errorPopup.message
+        }
+    }
+    
+    // Connections to C++ backend
+    Connections {
+        target: galleryModel
+        function onErrorOccurred(error) {
+            errorPopup.show(error)
+        }
+    }
+}
